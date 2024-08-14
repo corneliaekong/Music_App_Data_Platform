@@ -1,0 +1,75 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: db_user
+      POSTGRES_PASSWORD: db_password
+      POSTGRES_DB: dbt_database
+    networks:
+      - app-network
+
+  postgres-redash:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: redash_user
+      POSTGRES_PASSWORD: redash_password
+      POSTGRES_DB: redash_database
+    networks:
+      - app-network
+
+  redis:
+    image: redis:alpine
+    networks:
+      - app-network
+
+  dbt:
+    image: python:3.11-slim
+    environment:
+      DB_HOST: postgres  # Use the service name as the host
+      DB_PORT: 5432
+      DB_NAME: dbt_database
+      DB_USER: db_user
+      DB_PASSWORD: db_password
+    volumes:
+      - ./dbt_project:/usr/app/dbt
+    command: ["python", "-m", "dbt", "run"]
+    depends_on:
+      - postgres
+    networks:
+      - app-network
+
+  redash:
+    image: redash/redash:latest
+    env_file:
+      - ./redash_config.env
+    ports:
+      - "5000:5000"
+    depends_on:
+      - postgres-redash
+      - redis
+    networks:
+      - app-network
+
+  sql-uploader:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: python
+    environment:
+      DB_HOST: postgres  # Use the service name as the host
+      DB_PORT: 5432
+      DB_NAME: dbt_database
+      DB_USER: db_user
+      DB_PASSWORD: db_password
+    volumes:
+      - ./chinook.sqlite:/usr/app/chinook.sqlite
+    depends_on:
+      - postgres
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
